@@ -1,7 +1,8 @@
 // frontend/services/authService.ts
 import axios from 'axios';
 
-const API_URL = 'http://localhost:5001/api';
+const API_HOST = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
+const API_URL = `${window.location.protocol}//${API_HOST}:5001/api`;
 
 const api = axios.create({
     baseURL: API_URL,

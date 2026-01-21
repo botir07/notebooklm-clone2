@@ -36,6 +36,9 @@ export type AnyAIConfig = QuizConfig | FlashcardConfig | PresentationConfig | In
 export class GeminiService {
   private openai: OpenAI | null = null;
   private apiKey: string;
+  private readonly MAX_CONTEXT_CHARS = 240000;
+  private readonly MAX_SOURCE_CHARS = 80000;
+  private readonly MAX_SUMMARY_CHARS = 120000;
 
   constructor() {
     this.apiKey = '';
@@ -84,11 +87,52 @@ export class GeminiService {
     return cleaned;
   }
 
+  private trimText(text: string, maxChars: number): { text: string; truncated: boolean } {
+    if (text.length <= maxChars) return { text, truncated: false };
+    return { text: text.slice(0, maxChars), truncated: true };
+  }
+
+  private buildContext(
+    sources: Source[],
+    options?: { maxChars?: number; perSourceMaxChars?: number; includeHeaders?: boolean }
+  ): { context: string; wasTruncated: boolean } {
+    const maxChars = options?.maxChars ?? this.MAX_CONTEXT_CHARS;
+    const perSourceMaxChars = options?.perSourceMaxChars ?? this.MAX_SOURCE_CHARS;
+    const includeHeaders = options?.includeHeaders ?? true;
+
+    const pieces: string[] = [];
+    let total = 0;
+    let truncated = false;
+
+    for (const source of sources) {
+      if (total >= maxChars) break;
+
+      const header = includeHeaders ? `[MANBA: ${source.name}]\n` : '';
+      const remaining = Math.max(0, maxChars - total - header.length);
+      if (remaining <= 0) break;
+
+      const trimmed = this.trimText(source.content || '', Math.min(perSourceMaxChars, remaining));
+      if (trimmed.truncated || (source.content || '').length > perSourceMaxChars) truncated = true;
+
+      const nextPiece = header + trimmed.text;
+      pieces.push(nextPiece);
+      total += nextPiece.length + 2;
+    }
+
+    if (total >= maxChars) truncated = true;
+
+    return { context: pieces.join('\n\n'), wasTruncated: truncated };
+  }
+
   async summarizeSource(source: Source): Promise<string> {
     try {
       this.checkAPI();
       const model = 'google/gemini-2.0-flash-001';
-      const prompt = `Quyidagi manba mazmunini tahlil qiling va eng muhim 3-5 ta nuqtani (bullet points) o'zbek tilida qisqacha tushuntiring. Sarlavha yozmang, faqat nuqtalarni bering:\n\n[MANBA: ${source.name}]\n${source.content}`;
+      const trimmed = this.trimText(source.content || '', this.MAX_SUMMARY_CHARS);
+      if (trimmed.truncated) {
+        console.warn('Summary context truncated to avoid token limits.');
+      }
+      const prompt = `Quyidagi manba mazmunini tahlil qiling va eng muhim 3-5 ta nuqtani (bullet points) o'zbek tilida qisqacha tushuntiring. Sarlavha yozmang, faqat nuqtalarni bering:\n\n[MANBA: ${source.name}]\n${trimmed.text}`;
 
       const response = await this.openai!.chat.completions.create({
         model,
@@ -113,8 +157,14 @@ export class GeminiService {
       this.checkAPI();
 
       const model = 'meta-llama/llama-3-8b-instruct:free';
+      const contextPayload = sources.length > 0
+        ? this.buildContext(sources, { includeHeaders: true })
+        : { context: '', wasTruncated: false };
+      if (contextPayload.wasTruncated) {
+        console.warn('Chat context truncated to avoid token limits.');
+      }
       const context = sources.length > 0
-        ? `Siz tadqiqotchi yordamchisiz. Faqat quyidagi manbalar mazmuniga asoslanib javob bering:\n${sources.map(s => `[MANBA: ${s.name}]\n${s.content}`).join('\n\n')}`
+        ? `Siz tadqiqotchi yordamchisiz. Faqat quyidagi manbalar mazmuniga asoslanib javob bering:\n${contextPayload.context}`
         : 'Siz aqlli AI yordamchisiz.';
 
       const conversation = messages.map(m => ({
@@ -433,7 +483,11 @@ Important: No text inside image, only visual elements.`;
   ): Promise<string | QuizData | FlashcardData | MindMapData | PresentationData> {
     this.checkAPI();
     const model = 'google/gemini-2.0-flash-001';
-    const context = sources.map(s => s.content).join('\n\n');
+    const contextPayload = this.buildContext(sources, { includeHeaders: true });
+    if (contextPayload.wasTruncated) {
+      console.warn('Study material context truncated to avoid token limits.');
+    }
+    const context = contextPayload.context;
 
     if (['quiz', 'flashcard', 'mindmap', 'presentation'].includes(type)) {
       let systemPrompt = "";

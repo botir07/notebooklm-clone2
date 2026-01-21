@@ -11,7 +11,9 @@ const app = express();
 
 // Middleware
 app.use(cors({
-  origin: ['http://localhost:3000', 'http://localhost:5173'],
+  origin: (origin, callback) => {
+    callback(null, true);
+  },
   credentials: true
 }));
 app.use(express.json({ limit: '50mb' }));
@@ -982,6 +984,138 @@ async function startServer() {
     });
 
     // Простые тестовые эндпоинты без авторизации (для демо)
+    // Chat history
+    app.get('/api/chat/history', authMiddleware, async (req, res) => {
+      try {
+        const chats = await db.all(
+          `SELECT * FROM chat_history
+           WHERE user_id = ?
+           ORDER BY last_message_at DESC, created_at DESC`,
+          [req.user.id]
+        );
+
+        const parsedChats = chats.map((chat) => ({
+          ...chat,
+          messages: JSON.parse(chat.messages || '[]'),
+          sources: JSON.parse(chat.sources || '[]'),
+          settings: JSON.parse(chat.settings || '{}')
+        }));
+
+        res.json({
+          success: true,
+          chats: parsedChats
+        });
+      } catch (error) {
+        console.error('Get chat history error:', error);
+        res.status(500).json({
+          success: false,
+          message: 'Server error loading chat history'
+        });
+      }
+    });
+
+    app.post('/api/chat/history', authMiddleware, async (req, res) => {
+      try {
+        const { sessionId, messages, sources, settings, title } = req.body;
+
+        if (!sessionId) {
+          return res.status(400).json({
+            success: false,
+            message: 'sessionId is required'
+          });
+        }
+
+        const existing = await db.get(
+          'SELECT id FROM chat_history WHERE user_id = ? AND session_id = ?',
+          [req.user.id, sessionId]
+        );
+
+        if (existing) {
+          await db.run(
+            `UPDATE chat_history
+             SET title = ?,
+                 messages = ?,
+                 sources = ?,
+                 settings = ?,
+                 last_message_at = datetime('now'),
+                 updated_at = datetime('now')
+             WHERE user_id = ? AND session_id = ?`,
+            [
+              title || 'New Chat',
+              JSON.stringify(messages || []),
+              JSON.stringify(sources || []),
+              JSON.stringify(settings || {}),
+              req.user.id,
+              sessionId
+            ]
+          );
+        } else {
+          await db.run(
+            `INSERT INTO chat_history
+             (user_id, session_id, title, messages, sources, settings, is_active, last_message_at)
+             VALUES (?, ?, ?, ?, ?, ?, 1, datetime('now'))`,
+            [
+              req.user.id,
+              sessionId,
+              title || 'New Chat',
+              JSON.stringify(messages || []),
+              JSON.stringify(sources || []),
+              JSON.stringify(settings || {})
+            ]
+          );
+        }
+
+        const chat = await db.get(
+          'SELECT * FROM chat_history WHERE user_id = ? AND session_id = ?',
+          [req.user.id, sessionId]
+        );
+
+        res.json({
+          success: true,
+          chat: {
+            ...chat,
+            messages: JSON.parse(chat.messages || '[]'),
+            sources: JSON.parse(chat.sources || '[]'),
+            settings: JSON.parse(chat.settings || '{}')
+          }
+        });
+      } catch (error) {
+        console.error('Save chat history error:', error);
+        res.status(500).json({
+          success: false,
+          message: 'Server error saving chat history'
+        });
+      }
+    });
+
+    app.delete('/api/chat/history/:sessionId', authMiddleware, async (req, res) => {
+      try {
+        const { sessionId } = req.params;
+        const result = await db.run(
+          'DELETE FROM chat_history WHERE user_id = ? AND session_id = ?',
+          [req.user.id, sessionId]
+        );
+
+        if (result.changes === 0) {
+          return res.status(404).json({
+            success: false,
+            message: 'Chat history not found'
+          });
+        }
+
+        res.json({
+          success: true,
+          message: 'Chat history deleted'
+        });
+      } catch (error) {
+        console.error('Delete chat history error:', error);
+        res.status(500).json({
+          success: false,
+          message: 'Server error deleting chat history'
+        });
+      }
+    });
+
     app.post('/api/test/register', async (req, res) => {
       try {
         const { username, email, password } = req.body;
@@ -1028,7 +1162,7 @@ async function startServer() {
 
     // Запускаем сервер
     const PORT = process.env.PORT || 5001;
-    app.listen(PORT, () => {
+    app.listen(PORT, '0.0.0.0', () => {
       console.log(`🚀 Сервер запущен на порту ${PORT}`);
       console.log(`📁 База данных: ${db.dbPath}`);
       console.log(`🌐 API доступен по: http://localhost:${PORT}/api`);

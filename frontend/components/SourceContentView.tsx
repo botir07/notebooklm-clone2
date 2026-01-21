@@ -60,6 +60,10 @@ const SourceContentView: React.FC<SourceContentViewProps> = ({ source, onClose, 
   const subTextColor = theme === 'dark' ? 'text-gray-400' : 'text-gray-500';
   const bgColor = theme === 'dark' ? 'bg-[#1a1a1a]' : 'bg-white';
   const borderColor = theme === 'dark' ? 'border-white/5' : 'border-gray-100';
+  const isPdf = source.fileType === 'pdf' || source.name.toLowerCase().endsWith('.pdf');
+  const pdfSrc = source.content.startsWith('data:application/pdf')
+    ? source.content
+    : `data:application/pdf;base64,${source.content}`;
 
   const getIcon = () => {
     switch (source.type) {
@@ -157,11 +161,21 @@ const SourceContentView: React.FC<SourceContentViewProps> = ({ source, onClose, 
                 <span className="text-[10px] font-black uppercase tracking-[0.3em]">Hujjat matni</span>
               </div>
               
-              <div className="prose prose-lg max-w-none">
-                <p className={`whitespace-pre-wrap leading-[2.2] text-[17px] font-serif selection:bg-indigo-500/30 selection:text-white`}>
-                  {source.content}
-                </p>
-              </div>
+              {isPdf ? (
+                <div className="w-full h-[80vh] rounded-2xl overflow-hidden border border-white/10 bg-black/20">
+                  <iframe
+                    title={source.name}
+                    src={pdfSrc}
+                    className="w-full h-full"
+                  />
+                </div>
+              ) : (
+                <div className="prose prose-lg max-w-none">
+                  <p className={`whitespace-pre-wrap leading-[2.2] text-[17px] font-serif selection:bg-indigo-500/30 selection:text-white`}>
+                    {source.content}
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         </div>

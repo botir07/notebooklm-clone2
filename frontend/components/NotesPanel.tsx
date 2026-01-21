@@ -73,7 +73,7 @@ const NotesPanel: React.FC<NotesPanelProps> = ({
 
   if (!isOpen) {
     return (
-      <div className={`h-full ${panelBg} border-l ${borderColor} w-[68px] flex flex-col items-center py-4 shrink-0 transition-all gap-6 shadow-xl`}>
+      <div className={`hidden md:flex h-full ${panelBg} border-l ${borderColor} w-[68px] flex-col items-center py-4 shrink-0 transition-all gap-6 shadow-xl`}>
         <button 
           onClick={onToggle}
           className={`p-2.5 rounded-xl transition-all ${isDark ? 'hover:bg-white/5 text-gray-400' : 'hover:bg-gray-100 text-gray-500'}`}
@@ -101,7 +101,7 @@ const NotesPanel: React.FC<NotesPanelProps> = ({
   }
 
   return (
-    <div className={`h-full ${panelBg} border-l ${borderColor} w-96 flex flex-col shrink-0 transition-all shadow-2xl`}>
+    <div className={`fixed inset-y-0 right-0 z-40 h-full ${panelBg} border-l ${borderColor} w-[90vw] sm:w-96 flex flex-col shrink-0 transition-all shadow-2xl md:relative md:z-auto md:w-96`}>
       <div className="px-5 py-4 flex items-center justify-between">
         <h3 className={`text-sm font-bold ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>Daftar</h3>
         <button onClick={onToggle} className={`p-1.5 rounded-md transition-colors ${isDark ? 'hover:bg-white/5 text-gray-400' : 'hover:bg-gray-100 text-gray-500'}`}>

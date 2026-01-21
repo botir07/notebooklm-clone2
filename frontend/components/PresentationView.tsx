@@ -10,7 +10,7 @@ interface PresentationViewProps {
   data: PresentationData;
   sourceCount: number;
   onClose: () => void;
-  theme: 'dark';
+  theme: 'light' | 'dark';
 }
 
 const PresentationView: React.FC<PresentationViewProps> = ({ data, sourceCount, onClose, theme }) => {

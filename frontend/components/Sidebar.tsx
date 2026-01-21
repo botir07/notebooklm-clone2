@@ -31,7 +31,7 @@ interface SidebarProps {
   onOpenUrlModal: () => void;
   onOpenYoutubeModal: () => void;
   onOpenSearchModal: () => void;
-  theme: 'dark';
+  theme: 'light' | 'dark';
   isOpen: boolean;
   onToggle: () => void;
   canAddSource?: boolean;
@@ -49,6 +49,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   onOpenSourceAddition,
   isOpen,
   onToggle,
+  theme,
   canAddSource = true,
   canDeleteSource = true
 }) => {
@@ -58,11 +59,18 @@ const Sidebar: React.FC<SidebarProps> = ({
     source.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const bgColor = 'bg-[#0f0f0f]';
-  const borderColor = 'border-white/5';
-  const textColor = 'text-gray-100';
-  const subTextColor = 'text-gray-400';
-  const inputBg = 'bg-[#1a1b1e]';
+  const isDark = theme === 'dark';
+  const bgColor = isDark ? 'bg-[#0f0f0f]' : 'bg-white';
+  const borderColor = isDark ? 'border-white/5' : 'border-gray-200';
+  const textColor = isDark ? 'text-gray-100' : 'text-gray-900';
+  const subTextColor = isDark ? 'text-gray-400' : 'text-gray-500';
+  const inputBg = isDark ? 'bg-[#1a1b1e]' : 'bg-gray-100';
+  const softButtonBg = isDark ? 'bg-[#1a1b1e]' : 'bg-gray-100';
+  const softButtonHover = isDark ? 'hover:bg-[#25262b]' : 'hover:bg-gray-200';
+  const softHover = isDark ? 'hover:bg-white/5' : 'hover:bg-black/5';
+  const softSelected = isDark ? 'bg-white/10' : 'bg-black/5';
+  const footerBg = isDark ? 'bg-[#0f0f0f]' : 'bg-gray-50';
+  const footerCardBg = isDark ? 'bg-[#1e1e1e]' : 'bg-white';
 
   const getSourceIcon = (source: Source) => {
     const name = source.name.toLowerCase();
@@ -134,17 +142,17 @@ const Sidebar: React.FC<SidebarProps> = ({
 
   if (!isOpen) {
     return (
-      <div className={`w-[68px] ${bgColor} border-r ${borderColor} flex flex-col items-center py-4 h-full shrink-0 transition-all`}>
+      <div className={`hidden md:flex w-[68px] ${bgColor} border-r ${borderColor} flex-col items-center py-4 h-full shrink-0 transition-all`}>
         <button 
           onClick={onToggle}
-          className="p-2.5 mb-6 rounded-xl transition-all hover:bg-white/5 text-gray-500"
+          className={`p-2.5 mb-6 rounded-xl transition-all ${softHover} ${isDark ? 'text-gray-500' : 'text-gray-600'}`}
         >
           <PanelLeftOpen size={20} />
         </button>
 
         <button 
           onClick={onOpenSourceAddition}
-          className="w-10 h-10 mb-6 flex items-center justify-center rounded-xl transition-all bg-[#1a1b1e] text-blue-400 hover:bg-[#25262b]"
+          className={`w-10 h-10 mb-6 flex items-center justify-center rounded-xl transition-all ${softButtonBg} ${softButtonHover} ${isDark ? 'text-blue-400' : 'text-blue-600'}`}
           style={{ display: canAddSource ? undefined : 'none' }}
         >
           <Plus size={20} />
@@ -157,13 +165,13 @@ const Sidebar: React.FC<SidebarProps> = ({
               onClick={() => onSelectSource(source.id)}
               className={`w-10 h-10 flex items-center justify-center rounded-xl transition-all relative ${
                 selectedSourceId === source.id 
-                  ? 'bg-white/10' 
-                  : 'hover:bg-white/5'
+                  ? softSelected
+                  : softHover
               } ${activeSourceIds.has(source.id) ? 'opacity-100' : 'opacity-40'}`}
             >
               {getSourceIcon(source)}
               {activeSourceIds.has(source.id) && (
-                <div className="absolute top-0 right-0 w-2 h-2 bg-blue-500 rounded-full border-2 border-[#0f0f0f]"></div>
+                <div className={`absolute top-0 right-0 w-2 h-2 bg-blue-500 rounded-full border-2 ${isDark ? 'border-[#0f0f0f]' : 'border-white'}`}></div>
               )}
             </button>
           ))}
@@ -173,12 +181,12 @@ const Sidebar: React.FC<SidebarProps> = ({
   }
 
   return (
-    <div className={`w-80 ${bgColor} border-r ${borderColor} flex flex-col h-full transition-all shadow-xl shadow-black/[0.02]`}>
+    <div className={`fixed inset-y-0 left-0 z-40 w-[85vw] sm:w-80 ${bgColor} border-r ${borderColor} flex flex-col h-full transition-all shadow-xl shadow-black/[0.02] md:relative md:z-auto md:w-80`}>
       <div className={`h-16 px-6 border-b flex items-center justify-between shrink-0 ${borderColor}`}>
         <h2 className={`text-xl font-bold ${textColor}`}>Manbalar</h2>
         <button 
           onClick={onToggle}
-          className="p-1.5 rounded-lg transition-all hover:bg-white/5 text-gray-400"
+          className={`p-1.5 rounded-lg transition-all ${softHover} ${isDark ? 'text-gray-400' : 'text-gray-600'}`}
         >
           <PanelLeftClose size={20} />
         </button>
@@ -192,13 +200,13 @@ const Sidebar: React.FC<SidebarProps> = ({
             placeholder="Manbalarni qidirish"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="bg-transparent border-none outline-none text-xs flex-1 text-gray-400 placeholder:text-gray-600 font-medium"
+            className={`bg-transparent border-none outline-none text-xs flex-1 font-medium ${isDark ? 'text-gray-400 placeholder:text-gray-600' : 'text-gray-700 placeholder:text-gray-400'}`}
           />
         </div>
 
         <button 
           onClick={onOpenSourceAddition}
-          className="flex items-center justify-center w-full gap-2 p-3 bg-[#1a1b1e] text-blue-400 hover:bg-[#25262b] rounded-xl font-bold text-sm transition-all border border-blue-500/10 shadow-sm active:scale-95"
+          className={`flex items-center justify-center w-full gap-2 p-3 rounded-xl font-bold text-sm transition-all border border-blue-500/10 shadow-sm active:scale-95 ${softButtonBg} ${softButtonHover} ${isDark ? 'text-blue-400' : 'text-blue-600'}`}
           style={{ display: canAddSource ? undefined : 'none' }}
         >
           <Plus size={20} />
@@ -231,8 +239,10 @@ const Sidebar: React.FC<SidebarProps> = ({
                 onClick={() => onSelectSource(source.id)}
                 className={`group relative flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-all border ${
                   selectedSourceId === source.id 
-                    ? 'bg-white/5 border-white/5 shadow-md' 
-                    : 'border-transparent hover:bg-white/5'
+                    ? isDark
+                      ? 'bg-white/5 border-white/5 shadow-md'
+                      : 'bg-gray-100 border-gray-200'
+                    : `border-transparent ${softHover}`
                 } ${activeSourceIds.has(source.id) ? 'opacity-100' : 'opacity-40 grayscale-[0.5]'}`}
               >
                 <div 
@@ -276,10 +286,10 @@ const Sidebar: React.FC<SidebarProps> = ({
         )}
       </div>
 
-      <div className={`p-4 border-t ${borderColor} bg-[#0f0f0f] space-y-3`}>
-        <div className="rounded-xl p-4 bg-[#1e1e1e] border border-white/5 shadow-inner">
+      <div className={`p-4 border-t ${borderColor} ${footerBg} space-y-3`}>
+        <div className={`rounded-xl p-4 border shadow-inner ${footerCardBg} ${isDark ? 'border-white/5' : 'border-gray-200'}`}>
           <p className="text-[10px] font-black text-indigo-500 uppercase mb-1 tracking-widest">STATUS</p>
-          <p className={`text-sm font-bold text-gray-300`}>{activeSourceIds.size} ta manba faol</p>
+          <p className={`text-sm font-bold ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>{activeSourceIds.size} ta manba faol</p>
         </div>
       </div>
     </div>

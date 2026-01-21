@@ -11,7 +11,8 @@ import SourceContentView from './components/SourceContentView';
 import InfographicView from './components/InfographicView';
 import PresentationView from './components/PresentationView';
 import AdminPage from './components/AdminPage';
-import UserCredentialsModal from './components/UserCredentialsModal';
+import SettingsModal from './components/SettingsModal';
+import ProfileStatsModal from './components/ProfileStatsModal';
 import QuizSetupModal from './components/QuizSetupModal';
 import FlashcardSetupModal from './components/FlashcardSetupModal';
 import InfographicSetupModal from './components/InfographicSetupModal';
@@ -20,11 +21,37 @@ import MindMapSetupModal from './components/MindMapSetupModal';
 import SourceAdditionModal from './components/SourceAdditionModal';
 import { Source, Note, StudyMaterialType, QuizData, FlashcardData, MindMapData, PresentationData } from './types';
 import {
-  BookOpen, X, LogOut
+  BookOpen, X, LogOut, PanelLeftOpen, PanelRightOpen, Settings
 } from 'lucide-react';
 import { geminiService, QuizConfig, FlashcardConfig, InfographicConfig, PresentationConfig, MindMapConfig, AnyAIConfig } from './services/geminiService';
 
-const API_URL = 'http://localhost:5001/api';
+const API_HOST = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
+const API_URL = `${window.location.protocol}//${API_HOST}:5001/api`;
+
+const getInitialTheme = (): 'light' | 'dark' => {
+  const stored = localStorage.getItem('theme');
+  return stored === 'light' ? 'light' : 'dark';
+};
+
+const getInitialApiKey = (): string => {
+  const stored = localStorage.getItem('OPENROUTER_API_KEY');
+  const envKey = (import.meta as any).env?.VITE_OPENROUTER_API_KEY || '';
+  return stored || envKey;
+};
+
+const formatDuration = (ms: number): string => {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  if (hours > 0) {
+    return `${hours} soat ${minutes} daqiqa`;
+  }
+  if (minutes > 0) {
+    return `${minutes} daqiqa ${seconds} soniya`;
+  }
+  return `${seconds} soniya`;
+};
 
 const MainApp: React.FC = () => {
   const { user, logout, updateProfile } = useAuth();
@@ -44,7 +71,14 @@ const MainApp: React.FC = () => {
   const [adminPassword, setAdminPassword] = useState('');
   const [adminError, setAdminError] = useState('');
   const adminFileRef = useRef<HTMLInputElement>(null);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => getInitialTheme());
+  const [apiKey, setApiKey] = useState(() => getInitialApiKey());
+  const [apiKeyInput, setApiKeyInput] = useState('');
+  const [baseTimeMs] = useState(() => Number(localStorage.getItem('totalTimeMs') || 0));
+  const [sessionStart] = useState(() => Date.now());
+  const [totalTimeMs, setTotalTimeMs] = useState(() => Number(localStorage.getItem('totalTimeMs') || 0));
   const [profileUsername, setProfileUsername] = useState('');
   const [profilePassword, setProfilePassword] = useState('');
   const [profileError, setProfileError] = useState('');
@@ -69,12 +103,37 @@ const MainApp: React.FC = () => {
   const [editNote, setEditNote] = useState<{ id?: string; title: string; content: string }>({ title: '', content: '' });
 
   const selectedSource = sources.find(s => s.id === selectedSourceId);
+  const isDark = theme === 'dark';
+  const sessionTimeMs = Math.max(0, totalTimeMs - baseTimeMs);
+  const materialsByType = {
+    'Eslatma': notes.filter((n) => !n.type || n.type === 'reminders').length,
+    'Test': notes.filter((n) => n.type === 'quiz').length,
+    'Kartochka': notes.filter((n) => n.type === 'flashcard').length,
+    'Aqliy xarita': notes.filter((n) => n.type === 'mindmap').length,
+    'Infografika': notes.filter((n) => n.type === 'infographic').length,
+    'Taqdimot': notes.filter((n) => n.type === 'presentation').length
+  };
+  const materialsTotal = Object.values(materialsByType).reduce((sum, count) => sum + count, 0);
 
   useEffect(() => {
-    document.documentElement.classList.add('dark');
-    document.body.style.backgroundColor = '#121212';
-    document.body.style.color = '#f3f4f6';
+    document.documentElement.classList.toggle('dark', theme === 'dark');
+    document.body.style.backgroundColor = theme === 'dark' ? '#121212' : '#f8fafc';
+    document.body.style.color = theme === 'dark' ? '#f3f4f6' : '#0f172a';
+    localStorage.setItem('theme', theme);
+  }, [theme]);
 
+  useEffect(() => {
+    const tick = () => {
+      const next = baseTimeMs + (Date.now() - sessionStart);
+      setTotalTimeMs(next);
+      localStorage.setItem('totalTimeMs', String(next));
+    };
+    tick();
+    const id = window.setInterval(tick, 1000);
+    return () => window.clearInterval(id);
+  }, [baseTimeMs, sessionStart]);
+
+  useEffect(() => {
     const demoSource: Source = {
       id: 'demo-1',
       name: 'Welcome Guide.md',
@@ -84,6 +143,27 @@ const MainApp: React.FC = () => {
     };
     setSources([]);
     setActiveSourceIds(new Set());
+  }, []);
+
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 1023px)');
+    const handle = (event: MediaQueryListEvent | MediaQueryList) => {
+      const isSmall = 'matches' in event ? event.matches : media.matches;
+      if (isSmall) {
+        setIsSidebarOpen(false);
+        setIsNotesOpen(false);
+      }
+    };
+
+    handle(media);
+    if ('addEventListener' in media) {
+      media.addEventListener('change', handle);
+      return () => media.removeEventListener('change', handle);
+    }
+    // @ts-expect-error - Safari fallback
+    media.addListener(handle);
+    // @ts-expect-error - Safari fallback
+    return () => media.removeListener(handle);
   }, []);
 
   const fetchPublicSources = async () => {
@@ -96,6 +176,7 @@ const MainApp: React.FC = () => {
         name: source.name,
         content: source.content || '',
         type: source.type || 'file',
+        fileType: source.file_type || source.fileType || undefined,
         timestamp: source.created_at ? new Date(source.created_at).getTime() : Date.now()
       }));
       setSources(mapped);
@@ -110,11 +191,12 @@ const MainApp: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (!isProfileOpen) return;
+    if (!isSettingsOpen) return;
     setProfileUsername(user?.username || '');
     setProfilePassword('');
     setProfileError('');
-  }, [isProfileOpen, user]);
+    setApiKeyInput(apiKey);
+  }, [isSettingsOpen, user, apiKey]);
 
   useEffect(() => {
     const handlePopState = () => {
@@ -188,13 +270,25 @@ const MainApp: React.FC = () => {
         ...(nextPassword ? { password: nextPassword } : {})
       });
       setProfilePassword('');
-      setIsProfileOpen(false);
+      setIsSettingsOpen(false);
     } catch (error: any) {
       setProfileError(error.message || 'Login yoki parol xato');
     } finally {
       setIsProfileSaving(false);
     }
   };
+
+  const handlePreferencesSave = () => {
+    const nextKey = apiKeyInput.trim();
+    if (nextKey) {
+      setApiKey(nextKey);
+      localStorage.setItem('OPENROUTER_API_KEY', nextKey);
+    } else {
+      setApiKey('');
+      localStorage.removeItem('OPENROUTER_API_KEY');
+    }
+  };
+
 
   const handleAdminFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -461,7 +555,17 @@ const MainApp: React.FC = () => {
   }
 
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-[#121212] text-gray-100">
+    <div className={`flex h-screen w-full overflow-hidden ${isDark ? 'bg-[#121212] text-gray-100' : 'bg-slate-50 text-gray-900'}`}>
+      {(isSidebarOpen || isNotesOpen) && (
+        <button
+          className="fixed inset-0 z-30 bg-black/60 md:hidden"
+          onClick={() => {
+            setIsSidebarOpen(false);
+            setIsNotesOpen(false);
+          }}
+          aria-label="Close overlays"
+        />
+      )}
       <Sidebar
         sources={sources}
         activeSourceIds={activeSourceIds}
@@ -475,30 +579,67 @@ const MainApp: React.FC = () => {
         onOpenUrlModal={() => { }}
         onOpenYoutubeModal={() => { }}
         onOpenSearchModal={() => { }}
-        theme="dark"
+        theme={theme}
         isOpen={isSidebarOpen}
         onToggle={() => setIsSidebarOpen(!isSidebarOpen)}
         canAddSource={false}
         canDeleteSource={false}
       />
 
-      <main className="flex-1 flex flex-col bg-[#1a1a1a] overflow-hidden relative">
-        <header className="h-16 px-8 flex items-center justify-between border-b bg-[#1e1e1e] border-gray-800 shrink-0">
-          <div className="flex items-center gap-4">
+      <main className={`flex-1 flex flex-col overflow-hidden relative ${isDark ? 'bg-[#1a1a1a]' : 'bg-white'}`}>
+        <header className={`min-h-16 px-4 sm:px-8 py-3 sm:py-0 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b shrink-0 ${isDark ? 'bg-[#1e1e1e] border-gray-800' : 'bg-white border-gray-200'}`}>
+          <div className="flex items-center gap-3 sm:gap-4">
+            <div className="flex items-center gap-2 md:hidden">
+              <button
+                onClick={() => setIsSidebarOpen(true)}
+                className={`p-2 rounded-xl border ${isDark
+                  ? 'bg-gray-800/50 border-gray-700 text-gray-200 hover:bg-gray-800'
+                  : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'
+                  }`}
+                aria-label="Open sources"
+              >
+                <PanelLeftOpen size={18} />
+              </button>
+              <button
+                onClick={() => setIsNotesOpen(true)}
+                className={`p-2 rounded-xl border ${isDark
+                  ? 'bg-gray-800/50 border-gray-700 text-gray-200 hover:bg-gray-800'
+                  : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'
+                  }`}
+                aria-label="Open notes"
+              >
+                <PanelRightOpen size={18} />
+              </button>
+            </div>
             <div className="bg-indigo-600 text-white p-2 rounded-lg">
               <BookOpen size={20} />
             </div>
             <h1 className="text-lg font-bold text-white">{workspaceName}</h1>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3 sm:gap-4 justify-between sm:justify-end w-full sm:w-auto">
             <button
               onClick={() => setIsProfileOpen(true)}
-              className="flex items-center gap-3 px-4 py-2 rounded-xl bg-gray-800/50 border border-gray-700 hover:bg-gray-800"
+              className={`flex items-center gap-3 px-3 sm:px-4 py-2 rounded-xl border flex-1 sm:flex-none ${isDark
+                ? 'bg-gray-800/50 border-gray-700 hover:bg-gray-800 text-white'
+                : 'bg-white border-gray-200 hover:bg-gray-50 text-gray-900'
+                }`}
             >
               <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-xs">
                 {user?.username?.charAt(0)?.toUpperCase() || 'U'}
               </div>
-              <span className="text-sm font-medium text-white">{user?.username || 'Foydalanuvchi'}</span>
+              <span className={`text-sm font-medium truncate max-w-[120px] sm:max-w-[180px] ${isDark ? 'text-white' : 'text-gray-900'}`} title={user?.username || 'Foydalanuvchi'}>
+                {user?.username || 'Foydalanuvchi'}
+              </span>
+            </button>
+            <button
+              onClick={() => setIsSettingsOpen(true)}
+              className={`p-2 rounded-xl border ${isDark
+                ? 'bg-gray-800/50 border-gray-700 text-gray-200 hover:bg-gray-800'
+                : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'
+                }`}
+              title="Sozlamalar"
+            >
+              <Settings size={18} />
             </button>
             <button
               onClick={logout}
@@ -517,13 +658,15 @@ const MainApp: React.FC = () => {
                 source={selectedSource}
                 onClose={() => setSelectedSourceId(null)}
                 onActionWithSelection={handleActionWithSelection}
-                theme="dark"
+                theme={theme}
               />
             ) : (
               <ChatInterface
                 sources={getEnabledSources()}
                 onAddNote={handleAddNote}
-                theme="dark"
+                theme={theme}
+                apiKey={apiKey}
+                onOpenSettings={() => setIsSettingsOpen(true)}
               />
             )}
           </div>
@@ -533,7 +676,7 @@ const MainApp: React.FC = () => {
             onRemoveNote={handleRemoveNote}
             onGenerateAction={handleAIAction}
             onOpenNote={handleLaunchMaterial}
-            theme="dark"
+            theme={theme}
             onOpenManualNote={() => {
               setEditNote({ title: '', content: '' });
               setIsNoteModalOpen(true);
@@ -552,7 +695,7 @@ const MainApp: React.FC = () => {
             onClose={() => setIsSourceAdditionOpen(false)}
             onAddSource={handleAddSource}
             sourcesCount={sources.length}
-            theme="dark"
+            theme={theme}
           />
         )}
 
@@ -560,7 +703,7 @@ const MainApp: React.FC = () => {
           <QuizSetupModal
             onClose={() => setIsQuizSetupOpen(false)}
             onGenerate={(c) => handleAIAction('quiz', c)}
-            theme="dark"
+            theme={theme}
           />
         )}
 
@@ -568,7 +711,7 @@ const MainApp: React.FC = () => {
           <FlashcardSetupModal
             onClose={() => setIsFlashcardSetupOpen(false)}
             onGenerate={(c) => handleAIAction('flashcard', c)}
-            theme="dark"
+            theme={theme}
           />
         )}
 
@@ -576,7 +719,7 @@ const MainApp: React.FC = () => {
           <InfographicSetupModal
             onClose={() => setIsInfographicSetupOpen(false)}
             onGenerate={(c) => handleAIAction('infographic', c)}
-            theme="dark"
+            theme={theme}
           />
         )}
 
@@ -584,7 +727,7 @@ const MainApp: React.FC = () => {
           <PresentationSetupModal
             onClose={() => setIsPresentationSetupOpen(false)}
             onGenerate={(c) => handleAIAction('presentation', c)}
-            theme="dark"
+            theme={theme}
           />
         )}
 
@@ -592,7 +735,7 @@ const MainApp: React.FC = () => {
           <MindMapSetupModal
             onClose={() => setIsMindMapSetupOpen(false)}
             onGenerate={(c) => handleAIAction('mindmap', c)}
-            theme="dark"
+            theme={theme}
           />
         )}
 
@@ -602,7 +745,7 @@ const MainApp: React.FC = () => {
             quiz={activeQuiz.data}
             sourceCount={activeQuiz.sourceCount}
             onClose={() => setActiveQuiz(null)}
-            theme="dark"
+            theme={theme}
           />
         )}
 
@@ -611,7 +754,7 @@ const MainApp: React.FC = () => {
             data={activeFlashcards.data}
             sourceCount={activeFlashcards.sourceCount}
             onClose={() => setActiveFlashcards(null)}
-            theme="dark"
+            theme={theme}
           />
         )}
 
@@ -620,7 +763,7 @@ const MainApp: React.FC = () => {
             data={activeMindMap.data}
             sourceCount={activeMindMap.sourceCount}
             onClose={() => setActiveMindMap(null)}
-            theme="dark"
+            theme={theme}
           />
         )}
 
@@ -629,7 +772,7 @@ const MainApp: React.FC = () => {
             imageUrl={activeInfographic.url}
             title={activeInfographic.title}
             onClose={() => setActiveInfographic(null)}
-            theme="dark"
+            theme={theme}
           />
         )}
 
@@ -638,21 +781,40 @@ const MainApp: React.FC = () => {
             data={activePresentation.data}
             sourceCount={activePresentation.sourceCount}
             onClose={() => setActivePresentation(null)}
-            theme="dark"
+            theme={theme}
           />
         )}
 
-        <UserCredentialsModal
+        <ProfileStatsModal
           isOpen={isProfileOpen}
+          theme={theme}
+          username={user?.username || 'Foydalanuvchi'}
+          totalTimeLabel={formatDuration(totalTimeMs)}
+          sessionTimeLabel={formatDuration(sessionTimeMs)}
+          sourcesCount={sources.length}
+          notesCount={notes.length}
+          materialsTotal={materialsTotal}
+          materialsByType={materialsByType}
+          onClose={() => setIsProfileOpen(false)}
+        />
+
+        <SettingsModal
+          isOpen={isSettingsOpen}
+          theme={theme}
+          onThemeChange={setTheme}
+          apiKeyInput={apiKeyInput}
+          onApiKeyInputChange={setApiKeyInput}
+          onSaveApiKey={handlePreferencesSave}
           username={profileUsername}
           password={profilePassword}
           error={profileError}
           isSaving={isProfileSaving}
           onUsernameChange={setProfileUsername}
           onPasswordChange={setProfilePassword}
-          onClose={() => setIsProfileOpen(false)}
-          onSave={handleUserCredentialsSave}
+          onSaveCredentials={handleUserCredentialsSave}
+          onClose={() => setIsSettingsOpen(false)}
         />
+
 
         {/* Qo'lda eslatma qo'shish modali */}
         {isNoteModalOpen && (

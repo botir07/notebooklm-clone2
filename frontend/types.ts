@@ -4,6 +4,7 @@ export interface Source {
   name: string;
   content: string;
   type: 'file' | 'link' | 'text' | 'youtube';
+  fileType?: string;
   timestamp: number;
 }
 
