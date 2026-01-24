@@ -6,6 +6,10 @@ export interface Source {
   type: 'file' | 'link' | 'text' | 'youtube';
   fileType?: string;
   timestamp: number;
+  metadata?: {
+    text?: string;
+    [key: string]: any;
+  };
 }
 
 export interface Message {
@@ -74,7 +78,7 @@ export interface Note {
   infographicImageUrl?: string;
 }
 
-export type StudyMaterialType = 'infographic' | 'mindmap' | 'quiz' | 'presentation' | 'reminders' | 'flashcard';
+export type StudyMaterialType = 'infographic' | 'mindmap' | 'quiz' | 'presentation' | 'reminders' | 'flashcard' | 'topicComplete';
 
 export interface StudyMaterial {
   type: StudyMaterialType;

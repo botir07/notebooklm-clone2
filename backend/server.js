@@ -6,6 +6,7 @@ const sqlite3 = require('sqlite3').verbose();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const path = require('path');
+const pdfParse = require('pdf-parse');
 
 const app = express();
 
@@ -670,6 +671,25 @@ async function startServer() {
     app.post('/api/sources', authMiddleware, async (req, res) => {
       try {
         const { name, content, type, fileType, metadata, tags, isActive } = req.body;
+        const isPdf = (fileType || '').toLowerCase() === 'pdf' || (name || '').toLowerCase().endsWith('.pdf');
+        let sourceContent = content || '';
+        let metadataPayload = metadata || {};
+
+        if (isPdf && sourceContent) {
+          try {
+            const rawBase64 = sourceContent.startsWith('data:application/pdf')
+              ? sourceContent.split(',')[1] || ''
+              : sourceContent;
+            const buffer = Buffer.from(rawBase64, 'base64');
+            const parsed = await pdfParse(buffer);
+            metadataPayload = {
+              ...metadataPayload,
+              text: parsed.text || ''
+            };
+          } catch (parseError) {
+            console.error('PDF parse error:', parseError);
+          }
+        }
 
         const result = await db.run(
           `INSERT INTO sources 
@@ -678,11 +698,11 @@ async function startServer() {
           [
             req.user.id,
             name,
-            content,
+            sourceContent,
             type || 'file',
             fileType || 'unknown',
-            content.length,
-            JSON.stringify(metadata || {}),
+            sourceContent.length,
+            JSON.stringify(metadataPayload || {}),
             JSON.stringify(tags || []),
             isActive !== undefined ? isActive : 1
           ]

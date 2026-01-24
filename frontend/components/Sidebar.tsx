@@ -14,7 +14,8 @@ import {
   FileJson,
   Code,
   CheckSquare,
-  Square
+  Square,
+  X
 } from 'lucide-react';
 import { Source } from '../types';
 
@@ -202,6 +203,15 @@ const Sidebar: React.FC<SidebarProps> = ({
             onChange={(e) => setSearchQuery(e.target.value)}
             className={`bg-transparent border-none outline-none text-xs flex-1 font-medium ${isDark ? 'text-gray-400 placeholder:text-gray-600' : 'text-gray-700 placeholder:text-gray-400'}`}
           />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              className={`p-1 rounded-md transition-colors ${isDark ? 'hover:bg-white/5 text-gray-400' : 'hover:bg-gray-200 text-gray-500'}`}
+              aria-label="Qidiruvni tozalash"
+            >
+              <X size={14} />
+            </button>
+          )}
         </div>
 
         <button 
@@ -223,6 +233,9 @@ const Sidebar: React.FC<SidebarProps> = ({
           >
             {isAllSelected ? 'O\'chirish' : 'Hammasi'}
           </button>
+        </div>
+        <div className={`text-[10px] font-semibold ${subTextColor}`}>
+          {filteredSources.length} ta natija
         </div>
       </div>
       

@@ -106,12 +106,13 @@ const MainApp: React.FC = () => {
   const isDark = theme === 'dark';
   const sessionTimeMs = Math.max(0, totalTimeMs - baseTimeMs);
   const materialsByType = {
-    'Eslatma': notes.filter((n) => !n.type || n.type === 'reminders').length,
+    'Xulosa': notes.filter((n) => !n.type || n.type === 'reminders').length,
     'Test': notes.filter((n) => n.type === 'quiz').length,
     'Kartochka': notes.filter((n) => n.type === 'flashcard').length,
     'Aqliy xarita': notes.filter((n) => n.type === 'mindmap').length,
     'Infografika': notes.filter((n) => n.type === 'infographic').length,
-    'Taqdimot': notes.filter((n) => n.type === 'presentation').length
+    'Taqdimot': notes.filter((n) => n.type === 'presentation').length,
+    'Tugatilgan mavzular': notes.filter((n) => n.type === 'topicComplete').length
   };
   const materialsTotal = Object.values(materialsByType).reduce((sum, count) => sum + count, 0);
 
@@ -177,7 +178,8 @@ const MainApp: React.FC = () => {
         content: source.content || '',
         type: source.type || 'file',
         fileType: source.file_type || source.fileType || undefined,
-        timestamp: source.created_at ? new Date(source.created_at).getTime() : Date.now()
+        timestamp: source.created_at ? new Date(source.created_at).getTime() : Date.now(),
+        metadata: source.metadata || {}
       }));
       setSources(mapped);
       setActiveSourceIds(new Set(mapped.map((source: Source) => source.id)));
@@ -425,7 +427,215 @@ const MainApp: React.FC = () => {
 
   const handleRemoveNote = (id: string) => setNotes(prev => prev.filter(n => n.id !== id));
 
+  const buildSummarySource = (selectedSources: Source[], customContext?: string): Source => {
+    if (customContext && customContext.trim()) {
+      return {
+        id: 'summary-temp',
+        name: 'Tanlangan matn',
+        content: customContext,
+        type: 'text',
+        timestamp: Date.now(),
+        metadata: {}
+      };
+    }
+
+    const joined = selectedSources
+      .map((source) => {
+        const text = source.metadata?.text || source.content || '';
+        if (!text) return '';
+        return `# ${source.name}\n${text}`;
+      })
+      .filter(Boolean)
+      .join('\n\n');
+
+    return {
+      id: 'summary-temp',
+      name: 'Tanlangan manbalar',
+      content: joined,
+      type: 'text',
+      timestamp: Date.now(),
+      metadata: {}
+    };
+  };
+
+  const buildPdfContext = (selectedSources: Source[]): string => {
+    const joined = selectedSources
+      .map((source) => {
+        const text = source.metadata?.text || source.content || '';
+        if (!text) return '';
+        return `# ${source.name}\n${text}`;
+      })
+      .filter(Boolean)
+      .join('\n\n');
+    if (!joined.trim()) return '';
+    return `Faqat quyidagi PDF matniga tayangan holda javob bering. Tashqi bilim ishlatmang.\n\n${joined}`;
+  };
+
+  const handleSummaryAction = async (customContext?: string) => {
+    const enabledSources = getEnabledSources();
+    if (enabledSources.length === 0 && !customContext) {
+      alert("Iltimos, avval kamida bitta manbani belgilang.");
+      return;
+    }
+
+    setGeneratingMaterials(prev => new Set(prev).add('reminders'));
+    try {
+      const summarySource = buildSummarySource(enabledSources, customContext);
+      const summary = await geminiService.summarizeSource(summarySource);
+      const newNote: Note = {
+        id: Math.random().toString(36).substr(2, 9),
+        title: customContext ? 'Xulosa (tanlangan matn)' : 'Xulosa',
+        content: summary,
+        timestamp: Date.now(),
+        type: 'reminders',
+        sourceCount: customContext ? 1 : enabledSources.length
+      };
+      setNotes(prev => [newNote, ...prev]);
+    } catch (error) {
+      console.error("Xulosa yaratishda xatolik:", error);
+      alert("Xulosa yaratishda xatolik yuz berdi.");
+    } finally {
+      setGeneratingMaterials(prev => {
+        const n = new Set(prev);
+        n.delete('reminders');
+        return n;
+      });
+    }
+  };
+
+  const handleTopicCompleted = async () => {
+    const enabledSources = getEnabledSources();
+    if (enabledSources.length === 0) {
+      alert("Iltimos, avval kamida bitta manbani belgilang.");
+      return;
+    }
+
+    const pdfSources = enabledSources.filter((source) => source.fileType === 'pdf');
+    const targetPdfSources = selectedSource?.fileType === 'pdf'
+      ? pdfSources.filter((source) => source.id === selectedSource.id)
+      : pdfSources;
+
+    if (targetPdfSources.length === 0) {
+      alert("PDF manba topilmadi. Testlar faqat PDF matnidan yaratiladi.");
+      return;
+    }
+
+    const defaultTopic = selectedSource?.name || (targetPdfSources.length === 1 ? targetPdfSources[0].name : '');
+    const cleanedTopic = defaultTopic ? defaultTopic.replace(/\.[^.]+$/, '') : '';
+    const topicName = cleanedTopic || window.prompt("Qaysi mavzu tugatildi?", "")?.trim();
+
+    if (!topicName) return;
+
+    const pdfContext = buildPdfContext(targetPdfSources);
+    if (!pdfContext) {
+      alert("PDF matnini o'qib bo'lmadi. Iltimos, boshqa manba tanlang.");
+      return;
+    }
+
+    setGeneratingMaterials(prev => new Set(prev).add('quiz'));
+
+    const completedNote: Note = {
+      id: Math.random().toString(36).substr(2, 9),
+      title: `Mavzu tugatildi: ${topicName}`,
+      content: `Tugatilgan mavzu: ${topicName}`,
+      timestamp: Date.now(),
+      type: 'topicComplete',
+      sourceCount: targetPdfSources.length
+    };
+    setNotes(prev => [completedNote, ...prev]);
+
+    try {
+      const quizSource: Source = {
+        id: 'topic-complete',
+        name: 'PDF kontekst',
+        content: pdfContext,
+        type: 'text',
+        timestamp: Date.now(),
+        metadata: {}
+      };
+      const quizResult = await geminiService.generateStudyMaterial('quiz', [quizSource], {
+        questionCount: 'more',
+        difficulty: 'hard',
+        topic: topicName
+      }) as QuizData;
+      const shuffledQuiz = quizResult?.questions?.length ? shuffleQuizOptions(quizResult) : quizResult;
+      const quizNote: Note = {
+        id: Math.random().toString(36).substr(2, 9),
+        title: `${topicName} testi`,
+        content: JSON.stringify(shuffledQuiz),
+        timestamp: Date.now(),
+        type: 'quiz',
+        sourceCount: targetPdfSources.length,
+        quizData: shuffledQuiz
+      };
+      setNotes(prev => [quizNote, ...prev]);
+    } catch (error) {
+      console.error("Test yaratishda xatolik:", error);
+      alert("Test yaratishda xatolik yuz berdi.");
+    } finally {
+      setGeneratingMaterials(prev => {
+        const n = new Set(prev);
+        n.delete('quiz');
+        return n;
+      });
+    }
+  };
+
+  const shuffleQuizOptions = (quiz: QuizData): QuizData => {
+    const shuffledQuestions = quiz.questions.map((question) => {
+      const options = question.options.map((option, index) => ({ option, index }));
+      for (let i = options.length - 1; i > 0; i -= 1) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [options[i], options[j]] = [options[j], options[i]];
+      }
+      const newOptions = options.map((item) => item.option);
+      const newCorrectIndex = options.findIndex((item) => item.index === question.correctAnswerIndex);
+      return {
+        ...question,
+        options: newOptions,
+        correctAnswerIndex: newCorrectIndex
+      };
+    });
+
+    return {
+      ...quiz,
+      questions: shuffledQuestions
+    };
+  };
+
+  const handleAdvanceTopic = () => {
+    if (!selectedSourceId) {
+      alert("Keyingi mavzuga o'tish uchun manba tanlang.");
+      return;
+    }
+
+    const activeSources = sources.filter((source) => activeSourceIds.has(source.id));
+    if (activeSources.length === 0) {
+      alert("Faol manba topilmadi.");
+      return;
+    }
+
+    const currentIndex = activeSources.findIndex((source) => source.id === selectedSourceId);
+    const nextSource = currentIndex >= 0 ? activeSources[currentIndex + 1] : activeSources[0];
+    if (!nextSource) {
+      alert("Keyingi mavzu topilmadi.");
+      return;
+    }
+
+    setSelectedSourceId(nextSource.id);
+    setActiveQuiz(null);
+  };
+
   const handleAIAction = async (type: StudyMaterialType, aiConfig?: AnyAIConfig, customContext?: string) => {
+    if (type === 'topicComplete') {
+      await handleTopicCompleted();
+      return;
+    }
+    if (type === 'reminders') {
+      await handleSummaryAction(customContext);
+      return;
+    }
+
     const enabledSources = getEnabledSources();
     if (enabledSources.length === 0 && !customContext) {
       alert("Iltimos, avval kamida bitta manbani belgilang.");
@@ -464,14 +674,18 @@ const MainApp: React.FC = () => {
           cards: result
         };
       }
+      if (type === 'quiz' && result?.questions?.length) {
+        result = shuffleQuizOptions(result as QuizData);
+      }
 
       const labels: Record<StudyMaterialType, string> = {
         infographic: 'Infografika',
         mindmap: 'Aqliy xarita',
         quiz: 'Test',
         presentation: 'Taqdimot',
-        reminders: 'Eslatma',
-        flashcard: 'Kartochka'
+        reminders: 'Xulosa',
+        flashcard: 'Kartochka',
+        topicComplete: 'Mavzu tugatildi'
       };
 
       const newNote: Note = {
@@ -667,6 +881,7 @@ const MainApp: React.FC = () => {
                 theme={theme}
                 apiKey={apiKey}
                 onOpenSettings={() => setIsSettingsOpen(true)}
+                onSelectSource={setSelectedSourceId}
               />
             )}
           </div>
@@ -685,6 +900,7 @@ const MainApp: React.FC = () => {
             isOpen={isNotesOpen}
             onToggle={() => setIsNotesOpen(!isNotesOpen)}
             isSourcesActive={activeSourceIds.size > 0}
+            onCompleteTopic={handleTopicCompleted}
           />
         </div>
 
@@ -745,6 +961,7 @@ const MainApp: React.FC = () => {
             quiz={activeQuiz.data}
             sourceCount={activeQuiz.sourceCount}
             onClose={() => setActiveQuiz(null)}
+            onAdvanceTopic={handleAdvanceTopic}
             theme={theme}
           />
         )}

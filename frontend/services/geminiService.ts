@@ -111,8 +111,9 @@ export class GeminiService {
       const remaining = Math.max(0, maxChars - total - header.length);
       if (remaining <= 0) break;
 
-      const trimmed = this.trimText(source.content || '', Math.min(perSourceMaxChars, remaining));
-      if (trimmed.truncated || (source.content || '').length > perSourceMaxChars) truncated = true;
+      const sourceText = source.metadata?.text || source.content || '';
+      const trimmed = this.trimText(sourceText, Math.min(perSourceMaxChars, remaining));
+      if (trimmed.truncated || sourceText.length > perSourceMaxChars) truncated = true;
 
       const nextPiece = header + trimmed.text;
       pieces.push(nextPiece);
@@ -128,7 +129,8 @@ export class GeminiService {
     try {
       this.checkAPI();
       const model = 'google/gemini-2.0-flash-001';
-      const trimmed = this.trimText(source.content || '', this.MAX_SUMMARY_CHARS);
+      const sourceText = source.metadata?.text || source.content || '';
+      const trimmed = this.trimText(sourceText, this.MAX_SUMMARY_CHARS);
       if (trimmed.truncated) {
         console.warn('Summary context truncated to avoid token limits.');
       }
@@ -496,7 +498,14 @@ Important: No text inside image, only visual elements.`;
       if (type === 'quiz') {
         const qConfig = config as QuizConfig;
         targetCount = qConfig?.questionCount === 'less' ? 5 : qConfig?.questionCount === 'more' ? 20 : 10;
-        systemPrompt = `Siz ekspert o'qituvchisiz. O'zbek tilida AYNAN ${targetCount} TA SAVOLDAN iborat test yarating. Miqdor o'ta muhim. Sifatli va ${qConfig?.difficulty || 'o\'rtacha'} darajadagi savollar bo'lsin.
+        const topicHint = qConfig?.topic ? `Mavzu: ${qConfig.topic}.` : '';
+        const difficulty = qConfig?.difficulty || 'medium';
+        const difficultyHint = difficulty === 'hard'
+          ? "Savollar chuqur, murakkab, tahliliy va noaniq (lekin aniq javobli) bo'lsin. Detallarga e'tibor bering."
+          : difficulty === 'easy'
+            ? "Savollar sodda va asosiy tushunchalarga tayansin."
+            : "Savollar o'rtacha murakkablikda bo'lsin.";
+        systemPrompt = `Siz ekspert o'qituvchisiz. ${topicHint} O'zbek tilida AYNAN ${targetCount} TA SAVOLDAN iborat test yarating. Miqdor o'ta muhim. ${difficultyHint}
         Javobni quyidagi JSON formatda qaytaring:
         {
           "title": "Mavzu nomi",

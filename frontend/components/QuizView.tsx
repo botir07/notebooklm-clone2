@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ChevronRight, X, Check, RotateCcw, Eye, ArrowLeft, CheckCircle2, XCircle, MinusCircle } from 'lucide-react';
 import { QuizData } from '../types';
 
@@ -7,15 +7,17 @@ interface QuizViewProps {
   quiz: QuizData;
   sourceCount: number;
   onClose: () => void;
+  onAdvanceTopic?: () => void;
   theme: 'light' | 'dark';
 }
 
-const QuizView: React.FC<QuizViewProps> = ({ quiz, sourceCount, onClose, theme }) => {
+const QuizView: React.FC<QuizViewProps> = ({ quiz, sourceCount, onClose, onAdvanceTopic, theme }) => {
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [userAnswers, setUserAnswers] = useState<(number | null)[]>([]);
   const [showSummary, setShowSummary] = useState(false);
   const [isReviewMode, setIsReviewMode] = useState(false);
+  const [didAdvance, setDidAdvance] = useState(false);
 
   const currentQuestion = quiz.questions[currentQuestionIndex];
 
@@ -37,6 +39,7 @@ const QuizView: React.FC<QuizViewProps> = ({ quiz, sourceCount, onClose, theme }
     setUserAnswers([]);
     setShowSummary(false);
     setIsReviewMode(false);
+    setDidAdvance(false);
   };
 
   const calculateResults = () => {
@@ -58,6 +61,16 @@ const QuizView: React.FC<QuizViewProps> = ({ quiz, sourceCount, onClose, theme }
 
     return { correct, incorrect, skipped, accuracy };
   };
+
+  const results = showSummary ? calculateResults() : null;
+
+  useEffect(() => {
+    if (!showSummary || !results || didAdvance || !onAdvanceTopic) return;
+    if (results.accuracy >= 85) {
+      onAdvanceTopic();
+      setDidAdvance(true);
+    }
+  }, [showSummary, results, didAdvance, onAdvanceTopic]);
 
   const bgColor = theme === 'dark' ? 'bg-[#121214]' : 'bg-white';
   const textColor = theme === 'dark' ? 'text-white' : 'text-gray-900';
@@ -149,7 +162,7 @@ const QuizView: React.FC<QuizViewProps> = ({ quiz, sourceCount, onClose, theme }
   }
 
   if (showSummary) {
-    const { correct, incorrect, skipped, accuracy } = calculateResults();
+    const { correct, incorrect, skipped, accuracy } = results || { correct: 0, incorrect: 0, skipped: 0, accuracy: 0 };
     return (
       <div className={`fixed inset-0 z-[200] flex items-center justify-center p-6 bg-black/80 backdrop-blur-md`}>
         <div className={`w-full max-w-2xl p-12 rounded-3xl overflow-hidden flex flex-col items-center text-center shadow-2xl border ${theme === 'dark' ? 'bg-[#1c1c21] border-gray-800' : 'bg-white border-gray-100'} animate-in zoom-in-95 duration-200`}>

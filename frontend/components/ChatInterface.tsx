@@ -17,10 +17,15 @@ interface ChatInterfaceProps {
   theme?: 'light' | 'dark';
   apiKey?: string;
   onOpenSettings?: () => void;
+  onSelectSource?: (id: string) => void;
 }
 
 const MIN_INTERVAL = 8000;
 const API_URL = 'https://openrouter.ai/api/v1/chat/completions';
+const MAX_CHUNK_CHARS = 800;
+const CHUNK_OVERLAP = 150;
+const MAX_CONTEXT_CHARS = 2800;
+const TOP_K_CHUNKS = 4;
 const createGreeting = (): Message => ({
   id: Date.now().toString(),
   role: 'assistant',
@@ -34,11 +39,106 @@ const createSessionId = () => {
   return `chat_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 };
 
+const looksLikeBase64 = (text: string) => {
+  if (text.length < 200) return false;
+  const compact = text.replace(/\s+/g, '');
+  if (compact.length < 200) return false;
+  if (!/^[A-Za-z0-9+/=]+$/.test(compact)) return false;
+  const whitespaceRatio = (text.length - compact.length) / text.length;
+  return whitespaceRatio < 0.02;
+};
+
+const tokenize = (text: string) => {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9а-яёқғҳў\- ]/gi, ' ')
+    .split(/\s+/)
+    .filter(Boolean);
+};
+
+const getQueryTerms = (query: string) => {
+  const terms = new Set<string>();
+  for (const term of tokenize(query)) {
+    if (term.length < 3) continue;
+    terms.add(term);
+    if (terms.size >= 12) break;
+  }
+  return Array.from(terms);
+};
+
+const chunkText = (text: string) => {
+  const chunks: string[] = [];
+  let start = 0;
+  const clean = text.replace(/\s+/g, ' ').trim();
+  while (start < clean.length) {
+    const end = Math.min(start + MAX_CHUNK_CHARS, clean.length);
+    chunks.push(clean.slice(start, end));
+    if (end === clean.length) break;
+    start = Math.max(0, end - CHUNK_OVERLAP);
+  }
+  return chunks;
+};
+
+const scoreChunk = (chunk: string, terms: string[]) => {
+  if (terms.length === 0) return 0;
+  const lower = chunk.toLowerCase();
+  let score = 0;
+  for (const term of terms) {
+    let idx = 0;
+    let count = 0;
+    while ((idx = lower.indexOf(term, idx)) !== -1) {
+      count += 1;
+      idx += term.length;
+    }
+    if (count > 0) {
+      score += count * Math.min(term.length, 8);
+    }
+  }
+  return score;
+};
+
+const buildRagContext = (sources: Source[], query: string) => {
+  const terms = getQueryTerms(query);
+  const candidates: Array<{ text: string; sourceName: string; score: number }> = [];
+
+  for (const source of sources) {
+    const sourceText = source?.metadata?.text || source?.content || '';
+    if (!sourceText) continue;
+    if (looksLikeBase64(sourceText)) continue;
+
+    const chunks = chunkText(sourceText);
+    for (const chunk of chunks) {
+      const score = scoreChunk(chunk, terms);
+      if (score > 0) {
+        candidates.push({ text: chunk, sourceName: source.name, score });
+      }
+    }
+  }
+
+  candidates.sort((a, b) => b.score - a.score);
+  const picked: Array<{ text: string; sourceName: string }> = [];
+  let total = 0;
+
+  for (const candidate of candidates.slice(0, TOP_K_CHUNKS)) {
+    const nextLen = candidate.text.length + candidate.sourceName.length + 40;
+    if (total + nextLen > MAX_CONTEXT_CHARS) break;
+    picked.push({ text: candidate.text, sourceName: candidate.sourceName });
+    total += nextLen;
+  }
+
+  if (picked.length === 0) return '';
+
+  return picked
+    .map((item) => `Source: ${item.sourceName}\n${item.text}`)
+    .join('\n\n---\n\n');
+};
+
 export default function ChatInterface({
   sources = [],
   theme = 'dark',
   apiKey = '',
-  onOpenSettings
+  onOpenSettings,
+  onSelectSource
 }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>(() => [createGreeting()]);
   const [input, setInput] = useState('');
@@ -52,6 +152,8 @@ export default function ChatInterface({
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const isDark = theme === 'dark';
+  const sourcePreview = sources.slice(0, 3);
+  const extraSources = Math.max(0, sources.length - sourcePreview.length);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -169,6 +271,14 @@ export default function ChatInterface({
         apiKeyFirst8: apiKey.substring(0, 20) + '...'
       });
 
+      const ragContext = buildRagContext(sources, userMsg.content);
+      const systemPrompt = [
+        "You are a helpful AI assistant. Use the provided context when it is relevant.",
+        "If the context is insufficient, say you do not know and ask for more sources.",
+        "Answer in Uzbek or Russian based on the user's language. Keep responses concise.",
+        ragContext ? `Context:\n${ragContext}` : 'Context: (no relevant sources)'
+      ].join('\n');
+
       const response = await fetch(API_URL, {
         method: 'POST',
         headers: {
@@ -182,7 +292,7 @@ export default function ChatInterface({
           messages: [
             {
               role: 'system',
-              content: 'Siz foydali AI yordamchisiz. O\'zbek va rus tillarida javob bering. Javoblaringiz qisqa va aniq bo\'lsin.'
+              content: systemPrompt
             },
             ...updatedMessages
               .filter(msg => msg.role !== 'system')
@@ -276,11 +386,21 @@ export default function ChatInterface({
 
   return (
     <div
-      className={`flex flex-col h-screen ${isDark
+      className={`relative overflow-hidden ${isDark
         ? 'bg-gradient-to-b from-gray-900 to-black text-white'
         : 'bg-gradient-to-b from-slate-50 to-white text-gray-900'
         }`}
     >
+      <div
+        aria-hidden="true"
+        className={`pointer-events-none absolute inset-0 ${isDark ? 'opacity-70' : 'opacity-80'}`}
+        style={{
+          backgroundImage: isDark
+            ? 'radial-gradient(circle at 10% 10%, rgba(56, 189, 248, 0.12), transparent 45%), radial-gradient(circle at 90% 20%, rgba(168, 85, 247, 0.10), transparent 40%), linear-gradient(180deg, rgba(15, 23, 42, 0.6), rgba(2, 6, 23, 0.9))'
+            : 'radial-gradient(circle at 15% 10%, rgba(59, 130, 246, 0.12), transparent 45%), radial-gradient(circle at 85% 25%, rgba(14, 116, 144, 0.10), transparent 40%), linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(241, 245, 249, 0.9))'
+        }}
+      />
+      <div className="relative z-10 flex flex-col h-screen">
       {/* Header */}
       <div
         className={`border-b px-4 py-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between ${isDark
@@ -389,6 +509,28 @@ export default function ChatInterface({
       )}
 
 
+      <div className={`border-b px-4 py-2 flex flex-wrap items-center gap-2 ${isDark ? 'border-gray-800 bg-gray-900/40' : 'border-gray-200 bg-gray-50'}`}>
+        <div className="flex flex-wrap items-center gap-2">
+          {sourcePreview.map((source) => (
+            <button
+              key={source.id}
+              onClick={() => onSelectSource?.(source.id)}
+              className={`text-xs px-3 py-1 rounded-full border transition-colors ${isDark
+                ? 'border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700'
+                : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-100'}`}
+              title={source.name}
+            >
+              {source.name.length > 20 ? `${source.name.slice(0, 20)}...` : source.name}
+            </button>
+          ))}
+          {extraSources > 0 && (
+            <span className={`text-xs px-2.5 py-1 rounded-full ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+              +{extraSources} manba
+            </span>
+          )}
+        </div>
+      </div>
+
       {/* Messages Area */}
       <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4">
         {messages.map((msg) => (
@@ -397,15 +539,15 @@ export default function ChatInterface({
             className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
           >
             <div
-              className={`max-w-[85%] md:max-w-[70%] px-4 py-3 rounded-2xl ${msg.role === 'user'
-                  ? 'bg-blue-600 text-white rounded-br-none'
+              className={`max-w-[85%] md:max-w-[70%] px-4 py-3 rounded-2xl shadow-md ${msg.role === 'user'
+                  ? 'bg-blue-600 text-white rounded-br-none shadow-blue-500/20'
                   : msg.isError
                     ? isDark
-                      ? 'bg-red-900/30 border border-red-800/50 text-red-100'
-                      : 'bg-red-50 border border-red-200 text-red-700'
+                      ? 'bg-red-900/30 border border-red-800/50 text-red-100 shadow-red-900/20'
+                      : 'bg-red-50 border border-red-200 text-red-700 shadow-red-200/40'
                     : isDark
-                      ? 'bg-gray-800 text-gray-100 rounded-bl-none'
-                      : 'bg-white text-gray-900 border border-gray-200 rounded-bl-none'
+                      ? 'bg-gray-800/90 text-gray-100 rounded-bl-none shadow-black/20'
+                      : 'bg-white/90 text-gray-900 border border-gray-200 rounded-bl-none shadow-gray-200/60'
                 }`}
             >
               <div className="flex items-center gap-2 mb-2">
@@ -452,7 +594,7 @@ export default function ChatInterface({
       </div>
 
       {/* Input Area */}
-      <div className={`border-t p-3 sm:p-4 ${isDark ? 'border-gray-800 bg-gray-900/50' : 'border-gray-200 bg-white'}`}>
+      <div className={`border-t p-3 sm:p-4 ${isDark ? 'border-gray-800 bg-gray-900/60' : 'border-gray-200 bg-white/90'}`}>
         <div className="flex gap-2">
           <div className="flex-1 relative">
             <textarea
@@ -466,8 +608,8 @@ export default function ChatInterface({
                 }
               }}
               disabled={isLoading}
-              className={`w-full rounded-xl p-3 pr-12 resize-none focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-sm ${isDark
-                ? 'bg-gray-800 border border-gray-700 text-white'
+            className={`w-full rounded-xl p-3 pr-12 resize-none focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-sm shadow-inner ${isDark
+                ? 'bg-gray-800/90 border border-gray-700 text-white'
                 : 'bg-white border border-gray-300 text-gray-900'
                 }`}
               placeholder="Xabaringizni yozing... (Shift+Enter - yangi qator)"
@@ -483,7 +625,7 @@ export default function ChatInterface({
             disabled={isLoading || !input.trim()}
             className={`flex items-center justify-center w-12 rounded-xl font-medium transition-all ${isLoading || !input.trim()
                 ? 'bg-gray-700 text-gray-500 cursor-not-allowed'
-                : 'bg-blue-600 hover:bg-blue-700 text-white'
+                : 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-500/20'
               }`}
             title="Yuborish"
           >
@@ -506,6 +648,7 @@ export default function ChatInterface({
             {apiKey ? `API: ${apiKey.substring(0, 12)}...` : 'API key kiritilmagan'}
           </div>
         </div>
+      </div>
       </div>
     </div>
   );

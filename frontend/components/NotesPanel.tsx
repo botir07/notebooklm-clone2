@@ -14,7 +14,9 @@ import {
   Pencil,
   Lock,
   Check,
-  X
+  X,
+  Sparkles,
+  CheckCircle
 } from 'lucide-react';
 import { Note, StudyMaterialType } from '../types';
 
@@ -29,6 +31,7 @@ interface NotesPanelProps {
   isOpen: boolean;
   onToggle: () => void;
   isSourcesActive: boolean;
+  onCompleteTopic: () => void;
 }
 
 const NotesPanel: React.FC<NotesPanelProps> = ({ 
@@ -41,19 +44,27 @@ const NotesPanel: React.FC<NotesPanelProps> = ({
   generatingMaterials,
   isOpen,
   onToggle,
-  isSourcesActive
+  isSourcesActive,
+  onCompleteTopic
 }) => {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const isDark = theme === 'dark';
+  const isQuizGenerating = generatingMaterials.has('quiz');
 
   const actions = [
     { type: 'mindmap' as StudyMaterialType, label: 'Aqliy xarita', icon: <Network size={18} />, color: 'text-green-500', bgColor: isDark ? 'bg-[#1a221a]' : 'bg-[#1a3a1a]', borderColor: 'border-green-500/20' },
     { type: 'quiz' as StudyMaterialType, label: 'Test', icon: <HelpCircle size={18} />, color: 'text-purple-400', bgColor: isDark ? 'bg-[#201a25]' : 'bg-[#2a1a3a]', borderColor: 'border-purple-500/20' },
     { type: 'presentation' as StudyMaterialType, label: 'Taqdimot', icon: <MonitorPlay size={18} />, color: 'text-blue-400', bgColor: isDark ? 'bg-[#1a1e25]' : 'bg-[#1a2a4a]', borderColor: 'border-blue-500/20' },
     { type: 'infographic' as StudyMaterialType, label: 'Infografika', icon: <BarChart3 size={18} />, color: 'text-teal-400', bgColor: isDark ? 'bg-[#1a2222]' : 'bg-[#1a3a3a]', borderColor: 'border-teal-500/20' },
-    { type: 'reminders' as StudyMaterialType, label: 'Eslatma', icon: <FileText size={18} />, color: 'text-indigo-400', bgColor: isDark ? 'bg-[#1a1a25]' : 'bg-[#1a1a3a]', borderColor: 'border-indigo-500/20' },
+    { type: 'reminders' as StudyMaterialType, label: 'Xulosa', icon: <Sparkles size={18} />, color: 'text-indigo-300', bgColor: isDark ? 'bg-[#1a1a25]' : 'bg-[#1a1a3a]', borderColor: 'border-indigo-500/20' },
     { type: 'flashcard' as StudyMaterialType, label: 'Kartochka', icon: <CopyPlus size={18} />, color: 'text-orange-400', bgColor: isDark ? 'bg-[#251e1a]' : 'bg-[#4a2a1a]', borderColor: 'border-orange-500/20' },
   ];
+  const completeAction = {
+    label: 'Mavzu tugatildi',
+    icon: <CheckCircle size={18} />,
+    color: 'text-emerald-400',
+    bgColor: isDark ? 'bg-[#152320]' : 'bg-[#143a2f]',
+  };
 
   const getNoteIcon = (type?: StudyMaterialType) => {
     switch (type) {
@@ -61,8 +72,9 @@ const NotesPanel: React.FC<NotesPanelProps> = ({
       case 'quiz': return { icon: <HelpCircle size={18} />, color: 'text-purple-400', bg: 'bg-[#201a25]' };
       case 'presentation': return { icon: <MonitorPlay size={18} />, color: 'text-blue-400', bg: 'bg-[#1a1e25]' };
       case 'infographic': return { icon: <BarChart3 size={18} />, color: 'text-teal-400', bg: 'bg-[#1a2222]' };
-      case 'reminders': return { icon: <FileText size={18} />, color: 'text-indigo-400', bg: 'bg-[#1a1a25]' };
+      case 'reminders': return { icon: <Sparkles size={18} />, color: 'text-indigo-300', bg: 'bg-[#1a1a25]' };
       case 'flashcard': return { icon: <CopyPlus size={18} />, color: 'text-orange-400', bg: 'bg-[#251e1a]' };
+      case 'topicComplete': return { icon: <CheckCircle size={18} />, color: 'text-emerald-400', bg: 'bg-[#152320]' };
       default: return { icon: <FileText size={18} />, color: 'text-indigo-400', bg: 'bg-[#1a1a25]' };
     }
   };
@@ -82,12 +94,12 @@ const NotesPanel: React.FC<NotesPanelProps> = ({
         </button>
         <div className="flex-1 flex flex-col items-center gap-4 w-full px-2 overflow-y-auto custom-scrollbar">
           {actions.map((action) => {
-            const isDisabled = !isSourcesActive && action.type !== 'reminders';
+            const isDisabled = !isSourcesActive;
             return (
               <button
                 key={action.type}
                 disabled={isDisabled}
-                onClick={() => action.type === 'reminders' ? onOpenManualNote() : onGenerateAction(action.type)}
+                onClick={() => onGenerateAction(action.type)}
                 className={`group relative flex items-center justify-center w-11 h-11 rounded-xl transition-all border border-white/5 shadow-sm active:scale-95 ${isDisabled ? 'bg-gray-800/20 text-gray-700 cursor-not-allowed opacity-50' : `${action.bgColor} ${action.color} hover:brightness-125`}`}
                 title={isDisabled ? "Manba tanlanmagan" : action.label}
               >
@@ -95,6 +107,14 @@ const NotesPanel: React.FC<NotesPanelProps> = ({
               </button>
             );
           })}
+          <button
+            disabled={!isSourcesActive}
+            onClick={onCompleteTopic}
+            className={`group relative flex items-center justify-center w-11 h-11 rounded-xl transition-all border border-white/5 shadow-sm active:scale-95 ${!isSourcesActive ? 'bg-gray-800/20 text-gray-700 cursor-not-allowed opacity-50' : `${completeAction.bgColor} ${completeAction.color} hover:brightness-125`}`}
+            title={!isSourcesActive ? "Manba tanlanmagan" : completeAction.label}
+          >
+            {!isSourcesActive ? <Lock size={14} /> : (isQuizGenerating ? <Loader2 size={18} className="animate-spin" /> : completeAction.icon)}
+          </button>
         </div>
       </div>
     );
@@ -116,12 +136,12 @@ const NotesPanel: React.FC<NotesPanelProps> = ({
 
       <div className={`p-4 grid grid-cols-2 gap-2`}>
         {actions.map((action) => {
-          const isDisabled = !isSourcesActive && action.type !== 'reminders';
+          const isDisabled = !isSourcesActive;
           return (
             <button
               key={action.type}
               disabled={isDisabled}
-              onClick={() => action.type === 'reminders' ? onOpenManualNote() : onGenerateAction(action.type)}
+              onClick={() => onGenerateAction(action.type)}
               className={`flex items-center gap-2.5 p-3 rounded-xl text-[13px] font-bold transition-all border border-white/5 ${isDisabled ? 'bg-gray-800/10 text-gray-600 cursor-not-allowed' : `${action.bgColor} ${action.color} hover:brightness-110 active:scale-95`}`}
             >
               {isDisabled ? <Lock size={14} /> : (generatingMaterials.has(action.type) ? <Loader2 size={16} className="animate-spin" /> : action.icon)}
@@ -129,6 +149,14 @@ const NotesPanel: React.FC<NotesPanelProps> = ({
             </button>
           );
         })}
+        <button
+          disabled={!isSourcesActive}
+          onClick={onCompleteTopic}
+          className={`flex items-center gap-2.5 p-3 rounded-xl text-[13px] font-bold transition-all border border-white/5 ${!isSourcesActive ? 'bg-gray-800/10 text-gray-600 cursor-not-allowed' : `${completeAction.bgColor} ${completeAction.color} hover:brightness-110 active:scale-95`}`}
+        >
+          {!isSourcesActive ? <Lock size={14} /> : (isQuizGenerating ? <Loader2 size={16} className="animate-spin" /> : completeAction.icon)}
+          <span className="truncate">{completeAction.label}</span>
+        </button>
       </div>
 
       <div className="flex-1 overflow-y-auto flex flex-col custom-scrollbar border-t border-white/5 mt-2">

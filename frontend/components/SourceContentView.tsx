@@ -19,6 +19,7 @@ const SourceContentView: React.FC<SourceContentViewProps> = ({ source, onClose, 
   const [selection, setSelection] = useState<{ text: string; x: number; y: number } | null>(null);
   const [summary, setSummary] = useState<string | null>(null);
   const [isSummarizing, setIsSummarizing] = useState(false);
+  const [pdfObjectUrl, setPdfObjectUrl] = useState<string | null>(null);
   const contentRef = useRef<HTMLDivElement>(null);
 
   const handleMouseUp = () => {
@@ -64,6 +65,34 @@ const SourceContentView: React.FC<SourceContentViewProps> = ({ source, onClose, 
   const pdfSrc = source.content.startsWith('data:application/pdf')
     ? source.content
     : `data:application/pdf;base64,${source.content}`;
+
+  useEffect(() => {
+    if (!isPdf || !source.content) {
+      setPdfObjectUrl(null);
+      return;
+    }
+
+    if (source.content.startsWith('data:application/pdf')) {
+      setPdfObjectUrl(source.content);
+      return;
+    }
+
+    try {
+      const base64 = source.content.includes(',') ? source.content.split(',')[1] : source.content;
+      const byteString = atob(base64);
+      const len = byteString.length;
+      const bytes = new Uint8Array(len);
+      for (let i = 0; i < len; i += 1) {
+        bytes[i] = byteString.charCodeAt(i);
+      }
+      const blob = new Blob([bytes], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+      setPdfObjectUrl(url);
+      return () => URL.revokeObjectURL(url);
+    } catch (error) {
+      setPdfObjectUrl(pdfSrc);
+    }
+  }, [isPdf, source.content, pdfSrc]);
 
   const getIcon = () => {
     switch (source.type) {
@@ -163,16 +192,22 @@ const SourceContentView: React.FC<SourceContentViewProps> = ({ source, onClose, 
               
               {isPdf ? (
                 <div className="w-full h-[80vh] rounded-2xl overflow-hidden border border-white/10 bg-black/20">
-                  <iframe
-                    title={source.name}
-                    src={pdfSrc}
-                    className="w-full h-full"
-                  />
+                  {pdfObjectUrl ? (
+                    <iframe
+                      title={source.name}
+                      src={pdfObjectUrl}
+                      className="w-full h-full"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-sm text-gray-400">
+                      PDF yuklanmadi yoki bo'sh.
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="prose prose-lg max-w-none">
                   <p className={`whitespace-pre-wrap leading-[2.2] text-[17px] font-serif selection:bg-indigo-500/30 selection:text-white`}>
-                    {source.content}
+                    {source.content || 'Hujjat matni topilmadi.'}
                   </p>
                 </div>
               )}
