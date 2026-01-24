@@ -31,7 +31,8 @@
 .
 ├─ frontend/   # UI va AI chaqiruvlari
 └─ backend/    # API va SQLite
-🚀 Ishga tushirish
+
+## 🚀 Ishga tushirish
 Quyidagi buyruqlarni 2 ta alohida terminalda ishga tushiring.
 
 1) Backend
@@ -58,7 +59,7 @@ npm run dev
 Brauzerda ochish:
 
 http://localhost:5173
-👤 Admin (default)
+## 👤 Admin (default)
 Backend avtomatik admin yaratadi:
 
 username: admin
@@ -68,7 +69,7 @@ password: admin123
 Admin sahifa:
 
 http://localhost:5173/admin
-🔑 AI kalitini ulash
+## 🔑 AI kalitini ulash
 Frontend API kalitni localStorage orqali oladi:
 
 Sozlamalarda OPENROUTER_API_KEY ni kiriting
@@ -76,11 +77,11 @@ yoki
 
 .env fayl orqali VITE_OPENROUTER_API_KEY ni bering (frontend papkada)
 
-📄 PDF ko‘rish (mobil)
+## 📄 PDF ko‘rish (mobil)
 Mobil qurilmalarda PDF uchun “Open in new tab” tugmasi chiqadi.
 PDF yangi oynada ochiladi.
 
-🔌 API qisqa yo‘l
+## 🔌 API qisqa yo‘l
 Backend endpointlar:
 
 GET /api/health
@@ -93,21 +94,21 @@ POST /api/auth/register
 
 GET /api/notes
 
-🧯 Muammolar (FAQ)
-❌ PDF ko‘rinmasa → yangi oynada ochish tugmasini ishlating
+## 🧯 Muammolar (FAQ)
+## ❌ PDF ko‘rinmasa → yangi oynada ochish tugmasini ishlating
 
-🤖 AI javob bermasa → OPENROUTER_API_KEY ni tekshiring
+## 🤖 AI javob bermasa → OPENROUTER_API_KEY ni tekshiring
 
-⛔ 429 xatosi → so‘rov tezligini pasaytiring (rate limit yoqilgan)
+## ⛔ 429 xatosi → so‘rov tezligini pasaytiring (rate limit yoqilgan)
 
-🧪 Ishlab chiqish tavsiyalari
+## 🧪 Ishlab chiqish tavsiyalari
 Frontendni optimize qilish:
 
 npm run build
 Backend loglarni kuzating
 (ayniqsa PDF parse va auth xatolari)
 
-📌 Roadmap (ixtiyoriy)
+## 📌 Roadmap (ixtiyoriy)
  UI/UX polish (dark mode, responsive)
 
  Sources indexing + vector search
