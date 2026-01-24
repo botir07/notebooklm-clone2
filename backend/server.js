@@ -10,6 +10,8 @@ const pdfParse = require('pdf-parse');
 
 const app = express();
 
+app.disable('x-powered-by');
+
 // Middleware
 app.use(cors({
   origin: (origin, callback) => {
@@ -19,6 +21,45 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'same-origin');
+  res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=()');
+  next();
+});
+
+const rateLimitWindowMs = 60 * 1000;
+const rateLimitMax = 120;
+const rateLimitStore = new Map();
+
+const rateLimitMiddleware = (req, res, next) => {
+  const ip = req.headers['x-forwarded-for']?.toString().split(',')[0].trim() || req.socket.remoteAddress || 'unknown';
+  const now = Date.now();
+  const entry = rateLimitStore.get(ip) || { count: 0, resetAt: now + rateLimitWindowMs };
+
+  if (now > entry.resetAt) {
+    entry.count = 0;
+    entry.resetAt = now + rateLimitWindowMs;
+  }
+
+  entry.count += 1;
+  rateLimitStore.set(ip, entry);
+
+  if (entry.count > rateLimitMax) {
+    const retryAfter = Math.ceil((entry.resetAt - now) / 1000);
+    res.setHeader('Retry-After', String(retryAfter));
+    return res.status(429).json({
+      success: false,
+      message: 'Too many requests. Please slow down.'
+    });
+  }
+
+  next();
+};
+
+app.use('/api', rateLimitMiddleware);
 
 // JWT секрет
 const JWT_SECRET = process.env.JWT_SECRET || 'your_jwt_secret_key_change_in_production';
@@ -224,6 +265,17 @@ class Database {
 // Создаем экземпляр базы данных
 const db = new Database();
 
+const PUBLIC_SOURCES_TTL_MS = 30000;
+const publicSourcesCache = {
+  data: null,
+  timestamp: 0
+};
+
+const invalidatePublicSourcesCache = () => {
+  publicSourcesCache.data = null;
+  publicSourcesCache.timestamp = 0;
+};
+
 // Мидлвар для проверки инициализации базы данных
 const dbMiddleware = async (req, res, next) => {
   if (!db.initialized) {
@@ -315,7 +367,9 @@ async function startServer() {
 
     // Health check (публичный)
     app.get('/api/health', (req, res) => {
-      res.json({
+          invalidatePublicSourcesCache();
+
+          res.json({
         status: 'ok',
         timestamp: new Date().toISOString(),
         database: 'SQLite',
@@ -329,6 +383,14 @@ async function startServer() {
     // Public sources (read-only)
     app.get('/api/public/sources', async (req, res) => {
       try {
+        const now = Date.now();
+        if (publicSourcesCache.data && now - publicSourcesCache.timestamp < PUBLIC_SOURCES_TTL_MS) {
+          return res.json({
+            success: true,
+            sources: publicSourcesCache.data
+          });
+        }
+
         const adminUser = await db.get('SELECT id FROM users WHERE username = ?', ['admin']);
         if (!adminUser) {
           return res.json({ success: true, sources: [] });
@@ -346,6 +408,11 @@ async function startServer() {
           metadata: JSON.parse(source.metadata || '{}'),
           tags: JSON.parse(source.tags || '[]')
         }));
+
+        publicSourcesCache.data = parsedSources;
+        publicSourcesCache.timestamp = now;
+
+        invalidatePublicSourcesCache();
 
         res.json({
           success: true,
@@ -710,6 +777,8 @@ async function startServer() {
 
         const source = await db.get('SELECT * FROM sources WHERE id = ?', [result.id]);
 
+        invalidatePublicSourcesCache();
+
         res.json({
           success: true,
           message: 'Источник создан успешно',
@@ -788,6 +857,8 @@ async function startServer() {
           'SELECT * FROM sources WHERE id = ? AND user_id = ?',
           [id, req.user.id]
         );
+
+        invalidatePublicSourcesCache();
 
         res.json({
           success: true,

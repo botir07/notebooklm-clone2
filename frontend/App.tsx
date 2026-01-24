@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { AuthProvider, useAuth } from './components/AuthContext';
 import AuthPage from './components/AuthPage';
 import Sidebar from './components/Sidebar';
@@ -105,7 +105,7 @@ const MainApp: React.FC = () => {
   const selectedSource = sources.find(s => s.id === selectedSourceId);
   const isDark = theme === 'dark';
   const sessionTimeMs = Math.max(0, totalTimeMs - baseTimeMs);
-  const materialsByType = {
+  const materialsByType = useMemo(() => ({
     'Xulosa': notes.filter((n) => !n.type || n.type === 'reminders').length,
     'Test': notes.filter((n) => n.type === 'quiz').length,
     'Kartochka': notes.filter((n) => n.type === 'flashcard').length,
@@ -113,8 +113,11 @@ const MainApp: React.FC = () => {
     'Infografika': notes.filter((n) => n.type === 'infographic').length,
     'Taqdimot': notes.filter((n) => n.type === 'presentation').length,
     'Tugatilgan mavzular': notes.filter((n) => n.type === 'topicComplete').length
-  };
-  const materialsTotal = Object.values(materialsByType).reduce((sum, count) => sum + count, 0);
+  }), [notes]);
+  const materialsTotal = useMemo(
+    () => Object.values(materialsByType).reduce((sum, count) => sum + count, 0),
+    [materialsByType]
+  );
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark');

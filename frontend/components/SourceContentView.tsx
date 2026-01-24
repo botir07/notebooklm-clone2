@@ -1,5 +1,5 @@
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { 
   X, ArrowLeft, Clock, FileText, Globe, Youtube, Download, 
   Copy, Share2, PlusCircle, Sparkles, HelpCircle, Network, 
@@ -21,6 +21,10 @@ const SourceContentView: React.FC<SourceContentViewProps> = ({ source, onClose, 
   const [isSummarizing, setIsSummarizing] = useState(false);
   const [pdfObjectUrl, setPdfObjectUrl] = useState<string | null>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  const isMobile = useMemo(() => {
+    if (typeof navigator === 'undefined') return false;
+    return /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+  }, []);
 
   const handleMouseUp = () => {
     const sel = window.getSelection();
@@ -191,15 +195,33 @@ const SourceContentView: React.FC<SourceContentViewProps> = ({ source, onClose, 
               </div>
               
               {isPdf ? (
-                <div className="w-full h-[80vh] rounded-2xl overflow-hidden border border-white/10 bg-black/20">
+                <div className="w-full rounded-2xl border border-white/10 bg-black/20 p-4 sm:p-6">
                   {pdfObjectUrl ? (
-                    <iframe
-                      title={source.name}
-                      src={pdfObjectUrl}
-                      className="w-full h-full"
-                    />
+                    <>
+                      {isMobile && (
+                        <a
+                          href={pdfObjectUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 transition-all mb-4"
+                        >
+                          PDF ni ochish
+                        </a>
+                      )}
+                      <div className="w-full h-[70vh] rounded-xl overflow-hidden border border-white/10 bg-black/30">
+                        <object
+                          data={pdfObjectUrl}
+                          type="application/pdf"
+                          className="w-full h-full"
+                        >
+                          <div className="w-full h-full flex items-center justify-center text-sm text-gray-400">
+                            PDF ochilmadi. <a href={pdfObjectUrl} target="_blank" rel="noopener noreferrer" className="underline ml-1">Yangi oynada ochish</a>
+                          </div>
+                        </object>
+                      </div>
+                    </>
                   ) : (
-                    <div className="w-full h-full flex items-center justify-center text-sm text-gray-400">
+                    <div className="w-full h-[60vh] flex items-center justify-center text-sm text-gray-400">
                       PDF yuklanmadi yoki bo'sh.
                     </div>
                   )}

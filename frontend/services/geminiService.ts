@@ -501,7 +501,7 @@ Important: No text inside image, only visual elements.`;
         const topicHint = qConfig?.topic ? `Mavzu: ${qConfig.topic}.` : '';
         const difficulty = qConfig?.difficulty || 'medium';
         const difficultyHint = difficulty === 'hard'
-          ? "Savollar chuqur, murakkab, tahliliy va noaniq (lekin aniq javobli) bo'lsin. Detallarga e'tibor bering."
+          ? "Savollar chuqur, murakkab, tahliliy va noaniq (lekin aniq javobli) bo'lsin. Detallarga e'tibor bering. Chalg'ituvchi variantlar juda yaqin va ishonarli bo'lsin, lekin faqat bittasi to'g'ri."
           : difficulty === 'easy'
             ? "Savollar sodda va asosiy tushunchalarga tayansin."
             : "Savollar o'rtacha murakkablikda bo'lsin.";
